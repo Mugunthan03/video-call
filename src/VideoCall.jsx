@@ -13,7 +13,7 @@ import {
 const APP_ID = "4206f05f65d8414c8d818ae589f4aa8e";
 const TOKEN = null;
 const CHANNEL = "consult_68b684ada345e9a0b182c5e9";
-const UID = String(Math.floor(Math.random() * 100000));
+const UID ='18710';
 
 const VideoCall = () => {
   const [joined, setJoined] = useState(false);
@@ -109,89 +109,90 @@ const VideoCall = () => {
       setMicOn(!micOn);
     }
   };
-
-  // Screen Share
-  // Screen Share
 const shareScreen = async () => {
-  if (!screenTrack) {
-    try {
-      const screenTracks = await AgoraRTC.createScreenVideoTrack(
-        { encoderConfig: "1080p_1" },
-        "auto"
-      );
+  if (!clientRef.current || !localTracks.video) return;
 
-      let video, audio;
+  const track = await AgoraRTC.createScreenVideoTrack();
 
-      // Check if Agora returned [video, audio]
-      if (Array.isArray(screenTracks)) {
-        [video, audio] = screenTracks;
-      } else {
-        video = screenTracks;
-      }
+  // Stop camera temporarily
+  await clientRef.current.unpublish(localTracks.video);
+  localTracks.video.stop();
 
-      setScreenTrack(video);
+  await clientRef.current.publish(track);
 
-      // Publish screen video (and audio if available)
-      if (audio) {
-        await clientRef.current.publish([video, audio]);
-      } else {
-        await clientRef.current.publish(video);
-      }
+  setScreenTrack(track);
 
-      setMainTrack(video);
+  // When screen sharing stops
+  track.on("track-ended", async () => {
+    await clientRef.current.unpublish(track);
+    setScreenTrack(null);
 
-      // Handle when user stops sharing via browser
-      video.on("track-ended", () => {
-        stopScreenShare();
-      });
-    } catch (err) {
-      console.error("Screen share failed", err);
-    }
-  } else {
-    stopScreenShare();
-  }
+    // Re-publish camera
+    await clientRef.current.publish(localTracks.video);
+  });
 };
 
 
-  const stopScreenShare = async () => {
-    if (screenTrack) {
-      await clientRef.current.unpublish(screenTrack);
-      screenTrack.stop();
-      screenTrack.close();
-      setScreenTrack(null);
 
-      // fallback: show remote or my camera
-      const remotes = Object.values(remoteUsers);
-      if (remotes.length > 0) {
-        setMainTrack(remotes[0].videoTrack);
-      } else {
-        setMainTrack(localTracks.video);
-      }
+
+
+const stopScreenShare = async () => {
+  if (screenTrack) {
+    await clientRef.current.unpublish(screenTrack);
+    screenTrack.stop();
+    setScreenTrack(null);
+
+    // Re-publish camera
+    if (localVideoTrackRef.current) {
+      await clientRef.current.publish(localVideoTrackRef.current);
+      setMainTrack(localVideoTrackRef.current);
     }
-  };
+  }
+};
+
+// VideoPlayer
+
+
+
 
   // Handle fullscreen click
   const makeFullScreen = (track) => {
     setMainTrack(track);
   };
 
-  // Render video track
-  const VideoPlayer = ({ track }) => {
-    const ref = useRef(null);
-    useEffect(() => {
-      if (track && ref.current) {
-        track.play(ref.current);
+const VideoPlayer = ({ track }) => {
+  const ref = useRef(null);
+
+  useEffect(() => {
+    if (track && ref.current) {
+      // stop old playback before starting again
+      track.stop();
+      track.play(ref.current, { fit: "contain" });
+    }
+    return () => {
+      if (track) {
+        track.stop();
       }
-    }, [track]);
-    return <div ref={ref} className="w-full h-full"></div>;
-  };
+    };
+  }, [track]);
+
+  return <div ref={ref} className="w-full h-full bg-black"></div>;
+};
+
 
   return (
     <div className="h-screen w-screen bg-gray-900 flex flex-col relative">
-      {/* Main Stage */}
-      <div className="flex-1 bg-black flex items-center justify-center rounded-lg m-2 relative">
-        {mainTrack && <VideoPlayer track={mainTrack} />}
-      </div>
+     
+<div className="flex-1 bg-black flex items-center justify-center rounded-lg m-2 relative">
+  {screenTrack ? (
+    <VideoPlayer track={screenTrack} />
+  ) : mainTrack ? (
+    <VideoPlayer track={mainTrack} />
+  ) : (
+    <div className="text-white">Waiting for video...</div>
+  )}
+</div>
+
 
       {/* Floating tiles (local + remotes except main) */}
       <div className="absolute bottom-28 right-6 flex flex-col gap-2">
