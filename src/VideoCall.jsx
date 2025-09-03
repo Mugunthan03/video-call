@@ -269,6 +269,8 @@ const VideoCall = () => {
           onClick={screenTrack ? stopScreenShare : shareScreen}
           className={`px-4 py-2 rounded-full text-white transition-colors ${screenTrack ? "bg-blue-500" : "bg-gray-700"
             }`}
+
+            
         >
           <FaDesktop />
         </button>
