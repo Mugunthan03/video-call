@@ -158,35 +158,48 @@ const toggleCamera = async () => {
   };
 
   // Video Player component
-  const VideoPlayer = ({ track }) => {
-    const ref = useRef(null);
+ // Video Player component
+const VideoPlayer = ({ track, fallbackText }) => {
+  const ref = useRef(null);
 
-    useEffect(() => {
-      if (track && ref.current) {
-        track.stop(); // stop old playback
-        track.play(ref.current, { fit: "cover" });
-      }
-      return () => {
-        if (track) track.stop();
-      };
-    }, [track]);
+  useEffect(() => {
+    if (track && ref.current) {
+      track.stop(); // stop old playback
+      track.play(ref.current, { fit: "cover" });
+    }
+    return () => {
+      if (track) track.stop();
+    };
+  }, [track]);
 
-    return <div ref={ref} className="w-[90%] p-3 h-full bg-black"></div>;
-  };
+  return (
+    <div ref={ref} className="w-[90%] p-3 h-full bg-black flex items-center justify-center">
+      {!track && (
+        <div
+          className="w-full h-full flex items-center justify-center rounded-lg"
+          style={{
+            background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+          }}
+        >
+          <span className="text-white text-xl font-bold">{fallbackText}</span>
+        </div>
+      )}
+    </div>
+  );
+};
 
   return (
     <div className="h-screen w-screen bg-gray-900 flex flex-col relative">
       {/* Full Screen Area */}
       <div className="flex-1 flex items-center justify-center rounded-lg m-2 relative">
-        {screenTrack ? (
-          <VideoPlayer track={screenTrack} />
-        ) : camOn && mainTrack ? (
-          <VideoPlayer track={mainTrack} />
-        ) : (
-          <div className="w-full h-full flex items-center justify-center rounded-lg" style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}>
-            <span className="text-white text-2xl font-bold">Camera is Off</span>
-          </div>
-        )}
+       {screenTrack ? (
+  <VideoPlayer track={screenTrack} />
+) : camOn && mainTrack ? (
+  <VideoPlayer track={mainTrack} />
+) : (
+  <VideoPlayer track={null} fallbackText="Camera is Off" />
+)}
+
       </div>
 
       {/* Floating Tiles */}
