@@ -9,19 +9,18 @@ import {
   FaPhoneSlash,
   FaExpand,
 } from "react-icons/fa";
-import { User } from "lucide-react"; // 👈 Lucide avatar icon
 
 const APP_ID = "4206f05f65d8414c8d818ae589f4aa8e";
 const TOKEN = null;
 const CHANNEL = "consult_68b684ada345e9a0b182c5e9";
-const UID = "46005";
+const UID = "18710";
 
 const VideoCall = () => {
   const [joined, setJoined] = useState(false);
   const [localTracks, setLocalTracks] = useState({ video: null, audio: null });
   const [screenTrack, setScreenTrack] = useState(null);
   const [remoteUsers, setRemoteUsers] = useState({});
-  const [mainTrack, setMainTrack] = useState(null);
+  const [mainTrack, setMainTrack] = useState(null); // full screen
   const [micOn, setMicOn] = useState(true);
   const [camOn, setCamOn] = useState(true);
 
@@ -36,6 +35,8 @@ const VideoCall = () => {
 
       if (mediaType === "video") {
         setRemoteUsers((prev) => ({ ...prev, [user.uid]: user }));
+
+        // If anyone publishes a video or screen, make them main
         if (user.videoTrack) {
           setMainTrack(user.videoTrack);
         }
@@ -53,6 +54,7 @@ const VideoCall = () => {
         return updated;
       });
 
+      // If mainTrack was remote who left, fallback to local video or screen
       if (mainTrack === user.videoTrack) {
         if (screenTrack) setMainTrack(screenTrack);
         else setMainTrack(localTracks.video);
@@ -67,7 +69,9 @@ const VideoCall = () => {
 
     await clientRef.current.publish([micTrack, camTrack]);
 
+    // Show your video as full screen initially
     setMainTrack(camTrack);
+
     setJoined(true);
   };
 
@@ -88,27 +92,18 @@ const VideoCall = () => {
   };
 
   // Toggle Camera
-  const toggleCamera = async () => {
-    if (!camOn) {
-      // Camera is OFF → recreate or enable
-      let camTrack = localTracks.video;
-      if (!camTrack) {
-        camTrack = await AgoraRTC.createCameraVideoTrack();
-        setLocalTracks((prev) => ({ ...prev, video: camTrack }));
-      }
-      await clientRef.current.publish(camTrack);
-      camTrack.play();
-      setCamOn(true);
-      setMainTrack(camTrack);
+ // Toggle Camera (fixed)
+const toggleCamera = async () => {
+  if (localTracks.video) {
+    if (camOn) {
+      await localTracks.video.setEnabled(false); // turns off webcam hardware + stops publishing
     } else {
-      // Camera is ON → turn it off
-      if (localTracks.video) {
-        await clientRef.current.unpublish(localTracks.video);
-        localTracks.video.stop();
-      }
-      setCamOn(false);
+      await localTracks.video.setEnabled(true);  // re-enables webcam
     }
-  };
+    setCamOn(!camOn);
+  }
+};
+
 
   // Toggle Mic
   const toggleMic = async () => {
@@ -118,44 +113,42 @@ const VideoCall = () => {
     }
   };
 
-  // Start Screen Share
+  // Share Screen
   const shareScreen = async () => {
     if (!clientRef.current) return;
 
     const track = await AgoraRTC.createScreenVideoTrack();
 
+    // Stop camera temporarily
     if (localTracks.video) {
       await clientRef.current.unpublish(localTracks.video);
       localTracks.video.stop();
-      setCamOn(false); // auto disable camera
     }
 
     await clientRef.current.publish(track);
     setScreenTrack(track);
     setMainTrack(track);
 
+    // When screen sharing stops
     track.on("track-ended", async () => {
-      await stopScreenShare(true);
+      await stopScreenShare();
     });
   };
 
-  // Stop Screen Share
   const stopScreenShare = async () => {
     if (screenTrack) {
       await clientRef.current.unpublish(screenTrack);
       screenTrack.stop();
       setScreenTrack(null);
 
-      // Restore camera
-      let camTrack = localTracks.video;
-      if (!camTrack) {
-        camTrack = await AgoraRTC.createCameraVideoTrack();
-        setLocalTracks((prev) => ({ ...prev, video: camTrack }));
+      // Prefer remote user's video for full screen
+      const remoteVideoUser = Object.values(remoteUsers).find(u => u.videoTrack);
+      if (remoteVideoUser && remoteVideoUser.videoTrack) {
+        setMainTrack(remoteVideoUser.videoTrack);
+      } else if (localTracks.video) {
+        await clientRef.current.publish(localTracks.video);
+        setMainTrack(localTracks.video);
       }
-      await clientRef.current.publish(camTrack);
-      camTrack.play();
-      setCamOn(true);
-      setMainTrack(camTrack);
     }
   };
 
@@ -170,7 +163,7 @@ const VideoCall = () => {
 
     useEffect(() => {
       if (track && ref.current) {
-        track.stop();
+        track.stop(); // stop old playback
         track.play(ref.current, { fit: "cover" });
       }
       return () => {
@@ -181,13 +174,6 @@ const VideoCall = () => {
     return <div ref={ref} className="w-[90%] p-3 h-full bg-black"></div>;
   };
 
-  // Avatar placeholder
-  const Avatar = () => (
-    <div className="flex items-center justify-center w-full h-full bg-gray-800">
-      <User size={64} className="text-white" />
-    </div>
-  );
-
   return (
     <div className="h-screen w-screen bg-gray-900 flex flex-col relative">
       {/* Full Screen Area */}
@@ -197,42 +183,46 @@ const VideoCall = () => {
         ) : camOn && mainTrack ? (
           <VideoPlayer track={mainTrack} />
         ) : (
-          <Avatar />
+          <div className="w-full h-full flex items-center justify-center rounded-lg" style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}>
+            <span className="text-white text-2xl font-bold">Camera is Off</span>
+          </div>
         )}
       </div>
 
       {/* Floating Tiles */}
       <div className="absolute bottom-28 right-6 flex flex-col gap-2">
+        {/* Local Camera */}
         {localTracks.video && mainTrack !== localTracks.video && (
-          <div className="relative w-52 h-32 bg-gray-800 rounded-lg overflow-hidden border border-white shadow flex items-center justify-center">
-            {camOn ? <VideoPlayer track={localTracks.video} /> : <Avatar />}
-            {camOn && (
-              <button
-                onClick={() => makeFullScreen(localTracks.video)}
-                className="absolute top-1 right-1 bg-gray-700 text-white p-1 rounded"
-              >
-                <FaExpand />
-              </button>
-            )}
+          <div className="relative w-52 h-32 bg-black rounded-lg overflow-hidden border border-white shadow">
+            <VideoPlayer track={localTracks.video} />
+            <button
+              onClick={() => makeFullScreen(localTracks.video)}
+              className="absolute top-1 right-1 bg-gray-700 text-white p-1 rounded"
+            >
+              <FaExpand />
+            </button>
           </div>
         )}
 
-        {Object.values(remoteUsers).map((user) => (
-          <div
-            key={user.uid}
-            className="relative w-52 h-32 bg-gray-800 rounded-lg overflow-hidden border border-white shadow flex items-center justify-center"
-          >
-            {user.videoTrack ? <VideoPlayer track={user.videoTrack} /> : <Avatar />}
-            {user.videoTrack && (
-              <button
-                onClick={() => makeFullScreen(user.videoTrack)}
-                className="absolute top-1 right-1 bg-gray-700 text-white p-1 rounded"
+        {/* Remote Users */}
+        {Object.values(remoteUsers).map(
+          (user) =>
+            user.videoTrack &&
+            mainTrack !== user.videoTrack && (
+              <div
+                key={user.uid}
+                className="relative w-52 h-32 bg-black rounded-lg overflow-hidden border border-white shadow"
               >
-                <FaExpand />
-              </button>
-            )}
-          </div>
-        ))}
+                <VideoPlayer track={user.videoTrack} />
+                <button
+                  onClick={() => makeFullScreen(user.videoTrack)}
+                  className="absolute top-1 right-1 bg-gray-700 text-white p-1 rounded"
+                >
+                  <FaExpand />
+                </button>
+              </div>
+            )
+        )}
       </div>
 
       {/* Controls */}
@@ -269,8 +259,7 @@ const VideoCall = () => {
 
         <button
           onClick={screenTrack ? stopScreenShare : shareScreen}
-          className={`px-4 py-2 rounded-full text-white transition-colors ${screenTrack ? "bg-blue-500" : "bg-gray-700"
-            }`}
+          className="px-4 py-2 bg-gray-700 rounded-full text-white"
         >
           <FaDesktop />
         </button>
