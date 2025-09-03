@@ -34,36 +34,66 @@ const VideoCall = () => {
     clientRef.current.on("user-published", async (user, mediaType) => {
       await clientRef.current.subscribe(user, mediaType);
 
-      setRemoteUsers((prev) => ({
-        ...prev,
-        [user.uid]: {
-          ...user,
-          hasVideo: mediaType === "video" ? true : prev[user.uid]?.hasVideo,
-          hasAudio: mediaType === "audio" ? true : prev[user.uid]?.hasAudio,
-        },
-      }));
+      setRemoteUsers((prev) => {
+        const updated = { ...prev };
 
+        if (mediaType === "video") {
+          updated[user.uid] = {
+            ...user,
+            videoTrack: user.videoTrack,
+            hasVideo: true,
+            hasAudio: prev[user.uid]?.hasAudio ?? false,
+          };
+        }
+
+        if (mediaType === "audio") {
+          updated[user.uid] = {
+            ...user,
+            audioTrack: user.audioTrack,
+            hasAudio: true,
+            hasVideo: prev[user.uid]?.hasVideo ?? false,
+          };
+          user.audioTrack.play();
+        }
+
+        return updated;
+      });
+
+      // Priority: if remote video published → make main
       if (mediaType === "video" && user.videoTrack) {
         setMainTrack(user.videoTrack);
-      }
-
-      if (mediaType === "audio" && user.audioTrack) {
-        user.audioTrack.play();
       }
     });
 
     clientRef.current.on("user-unpublished", (user, mediaType) => {
-      setRemoteUsers((prev) => {
-        const updated = { ...prev };
-        if (mediaType === "video") {
-          updated[user.uid] = { ...updated[user.uid], hasVideo: false };
-        }
-        if (mediaType === "audio") {
-          updated[user.uid] = { ...updated[user.uid], hasAudio: false };
-        }
-        return updated;
-      });
-    });
+  setRemoteUsers((prev) => {
+    const updated = { ...prev };
+
+    if (mediaType === "video") {
+      updated[user.uid] = { ...updated[user.uid], hasVideo: false, videoTrack: null };
+    }
+    if (mediaType === "audio") {
+      updated[user.uid] = { ...updated[user.uid], hasAudio: false, audioTrack: null };
+    }
+
+    // 👇 If the unpublished track was the current main track, choose fallback
+    if (mainTrack === user.videoTrack) {
+      // Prefer another remote
+      const remoteWithVideo = Object.values(updated).find((u) => u.videoTrack);
+      if (remoteWithVideo) {
+        setMainTrack(remoteWithVideo.videoTrack);
+      } else if (localTracks.video) {
+        // fallback to local
+        setMainTrack(localTracks.video);
+      } else {
+        setMainTrack(null);
+      }
+    }
+
+    return updated;
+  });
+});
+
 
     await clientRef.current.join(APP_ID, CHANNEL, TOKEN, UID);
 
@@ -73,6 +103,7 @@ const VideoCall = () => {
 
     await clientRef.current.publish([micTrack, camTrack]);
 
+    // First join → local video is main
     setMainTrack(camTrack);
     setJoined(true);
   };
@@ -127,6 +158,8 @@ const VideoCall = () => {
 
     await clientRef.current.publish(track);
     setScreenTrack(track);
+
+    // Always main
     setMainTrack(track);
 
     track.on("track-ended", async () => {
@@ -147,7 +180,14 @@ const VideoCall = () => {
       }
       await clientRef.current.publish(camTrack);
       setCamOn(true);
-      setMainTrack(camTrack);
+
+      // Fallback: prefer remote video if exists
+      const remoteWithVideo = Object.values(remoteUsers).find((u) => u.videoTrack);
+      if (remoteWithVideo) {
+        setMainTrack(remoteWithVideo.videoTrack);
+      } else {
+        setMainTrack(camTrack);
+      }
     }
   };
 
@@ -198,7 +238,7 @@ const VideoCall = () => {
       <div className="flex-1 flex items-center justify-center rounded-lg m-2 relative">
         {screenTrack ? (
           <VideoPlayer track={screenTrack} />
-        ) : camOn && mainTrack ? (
+        ) : mainTrack ? (
           <VideoPlayer track={mainTrack} />
         ) : (
           <AvatarTile micOn={micOn} camOn={camOn} />
@@ -225,26 +265,22 @@ const VideoCall = () => {
         )}
 
         {/* Remote */}
-        {Object.values(remoteUsers).map((user) => (
-          <div
-            key={user.uid}
-            className="relative w-52 h-32 bg-black rounded-lg overflow-hidden border border-white shadow flex items-center justify-center"
-          >
-            {user.hasVideo && user.videoTrack ? (
+        {Object.values(remoteUsers).map((user) =>
+          user.videoTrack && mainTrack !== user.videoTrack ? (
+            <div
+              key={user.uid}
+              className="relative w-52 h-32 bg-black rounded-lg overflow-hidden border border-white shadow flex items-center justify-center"
+            >
               <VideoPlayer track={user.videoTrack} />
-            ) : (
-              <AvatarTile micOn={user.hasAudio !== false} camOn={false} />
-            )}
-            {user.videoTrack && (
               <button
                 onClick={() => makeFullScreen(user.videoTrack)}
                 className="absolute top-1 right-1 bg-gray-700 text-white p-1 rounded"
               >
                 <FaExpand />
               </button>
-            )}
-          </div>
-        ))}
+            </div>
+          ) : null
+        )}
       </div>
 
       {/* Controls */}
@@ -281,8 +317,9 @@ const VideoCall = () => {
 
         <button
           onClick={screenTrack ? stopScreenShare : shareScreen}
-          className={`px-4 py-2 rounded-full text-white transition-colors ${screenTrack ? "bg-blue-500" : "bg-gray-700"
-            }`}
+          className={`px-4 py-2 rounded-full text-white transition-colors ${
+            screenTrack ? "bg-blue-500" : "bg-gray-700"
+          }`}
         >
           <FaDesktop />
         </button>
