@@ -215,7 +215,7 @@ const VideoCall = () => {
 
   // Avatar tile with mic/cam icons
   const AvatarTile = ({ micOn, camOn }) => (
-    <div className="flex items-center justify-center w-full h-full bg-gray-800 relative">
+    <div className="flex items-center justify-center w-[90%] h-full bg-gray-800 relative">
       <User size={48} className="text-white" />
       <div className="absolute bottom-2 left-2 flex gap-2">
         {micOn ? (
@@ -304,14 +304,14 @@ const VideoCall = () => {
 
             <button
               onClick={toggleMic}
-              className="px-4 py-2 bg-gray-700 rounded-full text-white"
+              className={`px-4 py-2 rounded-full text-white ${!micOn ? 'bg-blue-500' :'bg-gray-700'}`}
             >
               {micOn ? <FaMicrophone /> : <FaMicrophoneSlash />}
             </button>
 
             <button
               onClick={toggleCamera}
-              className="px-4 py-2 bg-gray-700 rounded-full text-white"
+              className={`px-4 py-2 rounded-full text-white ${!camOn ? 'bg-blue-500' :'bg-gray-700'}`}
             >
               {camOn ? <FaVideo /> : <FaVideoSlash />}
             </button>
