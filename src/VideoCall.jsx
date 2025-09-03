@@ -13,14 +13,14 @@ import {
 const APP_ID = "4206f05f65d8414c8d818ae589f4aa8e";
 const TOKEN = null;
 const CHANNEL = "consult_68b684ada345e9a0b182c5e9";
-const UID = "18710";
+const UID = "46005";
 
 const VideoCall = () => {
   const [joined, setJoined] = useState(false);
   const [localTracks, setLocalTracks] = useState({ video: null, audio: null });
   const [screenTrack, setScreenTrack] = useState(null);
   const [remoteUsers, setRemoteUsers] = useState({});
-  const [mainTrack, setMainTrack] = useState(null); // full screen
+  const [mainTrack, setMainTrack] = useState(null);
   const [micOn, setMicOn] = useState(true);
   const [camOn, setCamOn] = useState(true);
 
@@ -35,8 +35,6 @@ const VideoCall = () => {
 
       if (mediaType === "video") {
         setRemoteUsers((prev) => ({ ...prev, [user.uid]: user }));
-
-        // If anyone publishes a video or screen, make them main
         if (user.videoTrack) {
           setMainTrack(user.videoTrack);
         }
@@ -54,7 +52,6 @@ const VideoCall = () => {
         return updated;
       });
 
-      // If mainTrack was remote who left, fallback to local video or screen
       if (mainTrack === user.videoTrack) {
         if (screenTrack) setMainTrack(screenTrack);
         else setMainTrack(localTracks.video);
@@ -69,9 +66,7 @@ const VideoCall = () => {
 
     await clientRef.current.publish([micTrack, camTrack]);
 
-    // Show your video as full screen initially
     setMainTrack(camTrack);
-
     setJoined(true);
   };
 
@@ -112,13 +107,14 @@ const VideoCall = () => {
     }
   };
 
-  // Share Screen
+  // Start Screen Share
   const shareScreen = async () => {
     if (!clientRef.current) return;
+    const confirmStart = window.confirm("Do you want to start screen sharing?");
+    if (!confirmStart) return;
 
     const track = await AgoraRTC.createScreenVideoTrack();
 
-    // Stop camera temporarily
     if (localTracks.video) {
       await clientRef.current.unpublish(localTracks.video);
       localTracks.video.stop();
@@ -128,21 +124,28 @@ const VideoCall = () => {
     setScreenTrack(track);
     setMainTrack(track);
 
-    // When screen sharing stops
+    // Handle when user stops sharing from browser control
     track.on("track-ended", async () => {
-      await stopScreenShare();
+      await stopScreenShare(true);
     });
   };
 
-  const stopScreenShare = async () => {
+  // Stop Screen Share
+  const stopScreenShare = async (fromBrowser = false) => {
+    if (!fromBrowser) {
+      const confirmStop = window.confirm("Do you want to stop screen sharing?");
+      if (!confirmStop) return;
+    }
+
     if (screenTrack) {
       await clientRef.current.unpublish(screenTrack);
       screenTrack.stop();
       setScreenTrack(null);
 
-      // Prefer remote user's video for full screen
-      const remoteVideoUser = Object.values(remoteUsers).find(u => u.videoTrack);
-      if (remoteVideoUser && remoteVideoUser.videoTrack) {
+      const remoteVideoUser = Object.values(remoteUsers).find(
+        (u) => u.videoTrack
+      );
+      if (remoteVideoUser?.videoTrack) {
         setMainTrack(remoteVideoUser.videoTrack);
       } else if (localTracks.video) {
         await clientRef.current.publish(localTracks.video);
@@ -162,7 +165,7 @@ const VideoCall = () => {
 
     useEffect(() => {
       if (track && ref.current) {
-        track.stop(); // stop old playback
+        track.stop();
         track.play(ref.current, { fit: "cover" });
       }
       return () => {
@@ -182,15 +185,22 @@ const VideoCall = () => {
         ) : camOn && mainTrack ? (
           <VideoPlayer track={mainTrack} />
         ) : (
-          <div className="w-full h-full flex items-center justify-center rounded-lg" style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}>
-            <span className="text-white text-2xl font-bold">Camera is Off</span>
+          <div
+            className="w-full h-full flex items-center justify-center rounded-lg"
+            style={{
+              background:
+                "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+            }}
+          >
+            <span className="text-white text-2xl font-bold">
+              Camera is Off
+            </span>
           </div>
         )}
       </div>
 
       {/* Floating Tiles */}
       <div className="absolute bottom-28 right-6 flex flex-col gap-2">
-        {/* Local Camera */}
         {localTracks.video && mainTrack !== localTracks.video && (
           <div className="relative w-52 h-32 bg-black rounded-lg overflow-hidden border border-white shadow">
             <VideoPlayer track={localTracks.video} />
@@ -203,7 +213,6 @@ const VideoCall = () => {
           </div>
         )}
 
-        {/* Remote Users */}
         {Object.values(remoteUsers).map(
           (user) =>
             user.videoTrack &&
@@ -258,7 +267,8 @@ const VideoCall = () => {
 
         <button
           onClick={screenTrack ? stopScreenShare : shareScreen}
-          className="px-4 py-2 bg-gray-700 rounded-full text-white"
+          className={`px-4 py-2 rounded-full text-white transition-colors ${screenTrack ? "bg-blue-500" : "bg-gray-700"
+            }`}
         >
           <FaDesktop />
         </button>
