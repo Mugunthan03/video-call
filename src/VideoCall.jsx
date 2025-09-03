@@ -7,26 +7,26 @@ import {
   FaVideoSlash,
   FaDesktop,
   FaPhoneSlash,
-    FaExpand,
+  FaExpand,
 } from "react-icons/fa";
 
 const APP_ID = "4206f05f65d8414c8d818ae589f4aa8e";
 const TOKEN = null;
 const CHANNEL = "consult_68b684ada345e9a0b182c5e9";
-const UID ='18710';
+const UID = "18710";
 
 const VideoCall = () => {
   const [joined, setJoined] = useState(false);
   const [localTracks, setLocalTracks] = useState({ video: null, audio: null });
   const [screenTrack, setScreenTrack] = useState(null);
   const [remoteUsers, setRemoteUsers] = useState({});
-  const [mainTrack, setMainTrack] = useState(null); // whoever is in full stage
+  const [mainTrack, setMainTrack] = useState(null); // full screen
   const [micOn, setMicOn] = useState(true);
   const [camOn, setCamOn] = useState(true);
 
   const clientRef = useRef(null);
 
-  // Join Channel
+  // Join Call
   const joinCall = async () => {
     clientRef.current = AgoraRTC.createClient({ mode: "rtc", codec: "vp8" });
 
@@ -36,13 +36,12 @@ const VideoCall = () => {
       if (mediaType === "video") {
         setRemoteUsers((prev) => ({ ...prev, [user.uid]: user }));
 
-        // auto-switch to screen share OR remote camera if only 1 remote
-        if (user.videoTrack?.trackMediaType === "screen") {
-          setMainTrack(user.videoTrack);
-        } else if (!mainTrack && Object.keys(remoteUsers).length === 0) {
+        // If anyone publishes a video or screen, make them main
+        if (user.videoTrack) {
           setMainTrack(user.videoTrack);
         }
       }
+
       if (mediaType === "audio") {
         user.audioTrack.play();
       }
@@ -54,8 +53,11 @@ const VideoCall = () => {
         delete updated[user.uid];
         return updated;
       });
+
+      // If mainTrack was remote who left, fallback to local video or screen
       if (mainTrack === user.videoTrack) {
-        setMainTrack(null); // clear if main user leaves
+        if (screenTrack) setMainTrack(screenTrack);
+        else setMainTrack(localTracks.video);
       }
     });
 
@@ -67,8 +69,8 @@ const VideoCall = () => {
 
     await clientRef.current.publish([micTrack, camTrack]);
 
-    // default: show remote as main if they join
-    setMainTrack(null);
+    // Show your video as full screen initially
+    setMainTrack(camTrack);
 
     setJoined(true);
   };
@@ -109,96 +111,88 @@ const VideoCall = () => {
       setMicOn(!micOn);
     }
   };
-const shareScreen = async () => {
-  if (!clientRef.current || !localTracks.video) return;
 
-  const track = await AgoraRTC.createScreenVideoTrack();
+  // Share Screen
+  const shareScreen = async () => {
+    if (!clientRef.current) return;
 
-  // Stop camera temporarily
-  await clientRef.current.unpublish(localTracks.video);
-  localTracks.video.stop();
+    const track = await AgoraRTC.createScreenVideoTrack();
 
-  await clientRef.current.publish(track);
-
-  setScreenTrack(track);
-
-  // When screen sharing stops
-  track.on("track-ended", async () => {
-    await clientRef.current.unpublish(track);
-    setScreenTrack(null);
-
-    // Re-publish camera
-    await clientRef.current.publish(localTracks.video);
-  });
-};
-
-
-
-
-
-const stopScreenShare = async () => {
-  if (screenTrack) {
-    await clientRef.current.unpublish(screenTrack);
-    screenTrack.stop();
-    setScreenTrack(null);
-
-    // Re-publish camera
-    if (localVideoTrackRef.current) {
-      await clientRef.current.publish(localVideoTrackRef.current);
-      setMainTrack(localVideoTrackRef.current);
+    // Stop camera temporarily
+    if (localTracks.video) {
+      await clientRef.current.unpublish(localTracks.video);
+      localTracks.video.stop();
     }
-  }
-};
 
-// VideoPlayer
+    await clientRef.current.publish(track);
+    setScreenTrack(track);
+    setMainTrack(track);
 
+    // When screen sharing stops
+    track.on("track-ended", async () => {
+      await stopScreenShare();
+    });
+  };
 
+  const stopScreenShare = async () => {
+    if (screenTrack) {
+      await clientRef.current.unpublish(screenTrack);
+      screenTrack.stop();
+      setScreenTrack(null);
 
+      // Prefer remote user's video for full screen
+      const remoteVideoUser = Object.values(remoteUsers).find(u => u.videoTrack);
+      if (remoteVideoUser && remoteVideoUser.videoTrack) {
+        setMainTrack(remoteVideoUser.videoTrack);
+      } else if (localTracks.video) {
+        await clientRef.current.publish(localTracks.video);
+        setMainTrack(localTracks.video);
+      }
+    }
+  };
 
-  // Handle fullscreen click
+  // Make any track full screen
   const makeFullScreen = (track) => {
     setMainTrack(track);
   };
 
-const VideoPlayer = ({ track }) => {
-  const ref = useRef(null);
+  // Video Player component
+  const VideoPlayer = ({ track }) => {
+    const ref = useRef(null);
 
-  useEffect(() => {
-    if (track && ref.current) {
-      // stop old playback before starting again
-      track.stop();
-      track.play(ref.current, { fit: "contain" });
-    }
-    return () => {
-      if (track) {
-        track.stop();
+    useEffect(() => {
+      if (track && ref.current) {
+        track.stop(); // stop old playback
+        track.play(ref.current, { fit: "cover" });
       }
-    };
-  }, [track]);
+      return () => {
+        if (track) track.stop();
+      };
+    }, [track]);
 
-  return <div ref={ref} className="w-full h-full bg-black"></div>;
-};
-
+    return <div ref={ref} className="w-[90%] p-3 h-full bg-black"></div>;
+  };
 
   return (
     <div className="h-screen w-screen bg-gray-900 flex flex-col relative">
-     
-<div className="flex-1 bg-black flex items-center justify-center rounded-lg m-2 relative">
-  {screenTrack ? (
-    <VideoPlayer track={screenTrack} />
-  ) : mainTrack ? (
-    <VideoPlayer track={mainTrack} />
-  ) : (
-    <div className="text-white">Waiting for video...</div>
-  )}
-</div>
+      {/* Full Screen Area */}
+      <div className="flex-1 flex items-center justify-center rounded-lg m-2 relative">
+        {screenTrack ? (
+          <VideoPlayer track={screenTrack} />
+        ) : camOn && mainTrack ? (
+          <VideoPlayer track={mainTrack} />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center rounded-lg" style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}>
+            <span className="text-white text-2xl font-bold">Camera is Off</span>
+          </div>
+        )}
+      </div>
 
-
-      {/* Floating tiles (local + remotes except main) */}
+      {/* Floating Tiles */}
       <div className="absolute bottom-28 right-6 flex flex-col gap-2">
         {/* Local Camera */}
         {localTracks.video && mainTrack !== localTracks.video && (
-          <div className="relative w-40 h-28 bg-black rounded-lg overflow-hidden border border-white shadow">
+          <div className="relative w-52 h-32 bg-black rounded-lg overflow-hidden border border-white shadow">
             <VideoPlayer track={localTracks.video} />
             <button
               onClick={() => makeFullScreen(localTracks.video)}
@@ -209,14 +203,14 @@ const VideoPlayer = ({ track }) => {
           </div>
         )}
 
-        {/* Remote users */}
+        {/* Remote Users */}
         {Object.values(remoteUsers).map(
           (user) =>
             user.videoTrack &&
             mainTrack !== user.videoTrack && (
               <div
                 key={user.uid}
-                className="relative w-40 h-28 bg-black rounded-lg overflow-hidden border border-white shadow"
+                className="relative w-52 h-32 bg-black rounded-lg overflow-hidden border border-white shadow"
               >
                 <VideoPlayer track={user.videoTrack} />
                 <button
@@ -263,7 +257,7 @@ const VideoPlayer = ({ track }) => {
         </button>
 
         <button
-          onClick={shareScreen}
+          onClick={screenTrack ? stopScreenShare : shareScreen}
           className="px-4 py-2 bg-gray-700 rounded-full text-white"
         >
           <FaDesktop />
