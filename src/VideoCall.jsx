@@ -14,7 +14,7 @@ import { User, Mic, MicOff, Video, VideoOff } from "lucide-react";
 const APP_ID = "4206f05f65d8414c8d818ae589f4aa8e";
 const TOKEN = null;
 const CHANNEL = "consult_68b684ada345e9a0b182c5e9";
-const UID = "46005";
+const UID = "18710";
 
 const VideoCall = () => {
   const [joined, setJoined] = useState(false);
@@ -66,33 +66,33 @@ const VideoCall = () => {
     });
 
     clientRef.current.on("user-unpublished", (user, mediaType) => {
-  setRemoteUsers((prev) => {
-    const updated = { ...prev };
+      setRemoteUsers((prev) => {
+        const updated = { ...prev };
 
-    if (mediaType === "video") {
-      updated[user.uid] = { ...updated[user.uid], hasVideo: false, videoTrack: null };
-    }
-    if (mediaType === "audio") {
-      updated[user.uid] = { ...updated[user.uid], hasAudio: false, audioTrack: null };
-    }
+        if (mediaType === "video") {
+          updated[user.uid] = { ...updated[user.uid], hasVideo: false, videoTrack: null };
+        }
+        if (mediaType === "audio") {
+          updated[user.uid] = { ...updated[user.uid], hasAudio: false, audioTrack: null };
+        }
 
-    // 👇 If the unpublished track was the current main track, choose fallback
-    if (mainTrack === user.videoTrack) {
-      // Prefer another remote
-      const remoteWithVideo = Object.values(updated).find((u) => u.videoTrack);
-      if (remoteWithVideo) {
-        setMainTrack(remoteWithVideo.videoTrack);
-      } else if (localTracks.video) {
-        // fallback to local
-        setMainTrack(localTracks.video);
-      } else {
-        setMainTrack(null);
-      }
-    }
+        // 👇 If the unpublished track was the current main track, choose fallback
+        if (mainTrack === user.videoTrack) {
+          // Prefer another remote
+          const remoteWithVideo = Object.values(updated).find((u) => u.videoTrack);
+          if (remoteWithVideo) {
+            setMainTrack(remoteWithVideo.videoTrack);
+          } else if (localTracks.video) {
+            // fallback to local
+            setMainTrack(localTracks.video);
+          } else {
+            setMainTrack(null);
+          }
+        }
 
-    return updated;
-  });
-});
+        return updated;
+      });
+    });
 
 
     await clientRef.current.join(APP_ID, CHANNEL, TOKEN, UID);
@@ -286,6 +286,7 @@ const VideoCall = () => {
       {/* Controls */}
       <div className="bg-gray-800 py-3 flex justify-center gap-6">
         {!joined ? (
+          // Show only Join button
           <button
             onClick={joinCall}
             className="px-4 py-2 bg-green-600 rounded-lg text-white"
@@ -293,37 +294,39 @@ const VideoCall = () => {
             Join
           </button>
         ) : (
-          <button
-            onClick={leaveCall}
-            className="px-4 py-2 bg-red-600 rounded-lg text-white flex items-center gap-2"
-          >
-            <FaPhoneSlash /> Leave
-          </button>
+          <>
+            <button
+              onClick={leaveCall}
+              className="px-4 py-2 bg-red-600 rounded-lg text-white flex items-center gap-2"
+            >
+              <FaPhoneSlash /> Leave
+            </button>
+
+            <button
+              onClick={toggleMic}
+              className="px-4 py-2 bg-gray-700 rounded-full text-white"
+            >
+              {micOn ? <FaMicrophone /> : <FaMicrophoneSlash />}
+            </button>
+
+            <button
+              onClick={toggleCamera}
+              className="px-4 py-2 bg-gray-700 rounded-full text-white"
+            >
+              {camOn ? <FaVideo /> : <FaVideoSlash />}
+            </button>
+
+            <button
+              onClick={screenTrack ? stopScreenShare : shareScreen}
+              className={`px-4 py-2 rounded-full text-white transition-colors ${screenTrack ? "bg-blue-500" : "bg-gray-700"
+                }`}
+            >
+              <FaDesktop />
+            </button>
+          </>
         )}
-
-        <button
-          onClick={toggleMic}
-          className="px-4 py-2 bg-gray-700 rounded-full text-white"
-        >
-          {micOn ? <FaMicrophone /> : <FaMicrophoneSlash />}
-        </button>
-
-        <button
-          onClick={toggleCamera}
-          className="px-4 py-2 bg-gray-700 rounded-full text-white"
-        >
-          {camOn ? <FaVideo /> : <FaVideoSlash />}
-        </button>
-
-        <button
-          onClick={screenTrack ? stopScreenShare : shareScreen}
-          className={`px-4 py-2 rounded-full text-white transition-colors ${
-            screenTrack ? "bg-blue-500" : "bg-gray-700"
-          }`}
-        >
-          <FaDesktop />
-        </button>
       </div>
+
     </div>
   );
 };
