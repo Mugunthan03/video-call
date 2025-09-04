@@ -11,10 +11,15 @@ import {
 } from "react-icons/fa";
 import { User, Mic, MicOff, Video, VideoOff } from "lucide-react";
 
-const APP_ID = "4206f05f65d8414c8d818ae589f4aa8e";
-const TOKEN = null;
-const CHANNEL = "consult_68b684ada345e9a0b182c5e9";
-const UID = "18710";
+const APP_ID = "f9250d1d7cfd44c1a514966db2ad860b";
+const TOKEN =
+  "006f9250d1d7cfd44c1a514966db2ad860bIABc0X4X4AmTzcY4PCWyPjnmuD9Sw7UvdIRsRUweb0aJsMHg1RZNIb4SIgBsKhM3MIq6aAQAAQD4P7loAgD4P7loAwD4P7loBAD4P7lo";
+const CHANNEL = "consult_68b684aea345e9a0b182c630";
+const UID = "59202";
+
+// Consultation start and end times (UNIX seconds)
+const joinAllowedFrom = 1756969500; // start
+const end = 1756971000;   // end
 
 const VideoCall = () => {
   const [joined, setJoined] = useState(false);
@@ -59,7 +64,6 @@ const VideoCall = () => {
         return updated;
       });
 
-      // Priority: if remote video published → make main
       if (mediaType === "video" && user.videoTrack) {
         setMainTrack(user.videoTrack);
       }
@@ -76,14 +80,11 @@ const VideoCall = () => {
           updated[user.uid] = { ...updated[user.uid], hasAudio: false, audioTrack: null };
         }
 
-        // 👇 If the unpublished track was the current main track, choose fallback
         if (mainTrack === user.videoTrack) {
-          // Prefer another remote
           const remoteWithVideo = Object.values(updated).find((u) => u.videoTrack);
           if (remoteWithVideo) {
             setMainTrack(remoteWithVideo.videoTrack);
           } else if (localTracks.video) {
-            // fallback to local
             setMainTrack(localTracks.video);
           } else {
             setMainTrack(null);
@@ -94,7 +95,6 @@ const VideoCall = () => {
       });
     });
 
-
     await clientRef.current.join(APP_ID, CHANNEL, TOKEN, UID);
 
     const micTrack = await AgoraRTC.createMicrophoneAudioTrack();
@@ -103,7 +103,6 @@ const VideoCall = () => {
 
     await clientRef.current.publish([micTrack, camTrack]);
 
-    // First join → local video is main
     setMainTrack(camTrack);
     setJoined(true);
   };
@@ -158,8 +157,6 @@ const VideoCall = () => {
 
     await clientRef.current.publish(track);
     setScreenTrack(track);
-
-    // Always main
     setMainTrack(track);
 
     track.on("track-ended", async () => {
@@ -181,7 +178,6 @@ const VideoCall = () => {
       await clientRef.current.publish(camTrack);
       setCamOn(true);
 
-      // Fallback: prefer remote video if exists
       const remoteWithVideo = Object.values(remoteUsers).find((u) => u.videoTrack);
       if (remoteWithVideo) {
         setMainTrack(remoteWithVideo.videoTrack);
@@ -191,12 +187,33 @@ const VideoCall = () => {
     }
   };
 
-  // Make any track full screen
   const makeFullScreen = (track) => {
     setMainTrack(track);
   };
 
-  // Video Player component
+  // Handle Join button click with consultation time validation
+  const handleJoinClick = () => {
+    const currentTime = Math.floor(Date.now() / 1000);
+    console.log(currentTime)
+    if (currentTime < joinAllowedFrom) {
+      alert("You can only join 5 minutes before the consultation starts.");
+      return;
+    }
+
+    if (currentTime > end) {
+      alert("Consultation time is over. Re-entry is not allowed.");
+      return;
+    }
+
+    // if (currentTime >= joinAllowedFrom - 300 && currentTime < joinAllowedFrom) {
+    //   alert("Consultation will start in 5 minutes. Please wait.");
+    //   return;
+    // }
+
+    joinCall();
+  };
+
+  // Video Player
   const VideoPlayer = ({ track }) => {
     const ref = useRef(null);
 
@@ -213,28 +230,19 @@ const VideoCall = () => {
     return <div ref={ref} className="w-[90%] p-3 h-full bg-black"></div>;
   };
 
-  // Avatar tile with mic/cam icons
   const AvatarTile = ({ micOn, camOn }) => (
     <div className="flex items-center justify-center w-[90%] h-full bg-gray-800 relative">
       <User size={48} className="text-white" />
       <div className="absolute bottom-2 left-2 flex gap-2">
-        {micOn ? (
-          <Mic size={16} className="text-green-400" />
-        ) : (
-          <MicOff size={16} className="text-red-500" />
-        )}
-        {camOn ? (
-          <Video size={16} className="text-green-400" />
-        ) : (
-          <VideoOff size={16} className="text-red-500" />
-        )}
+        {micOn ? <Mic size={16} className="text-green-400" /> : <MicOff size={16} className="text-red-500" />}
+        {camOn ? <Video size={16} className="text-green-400" /> : <VideoOff size={16} className="text-red-500" />}
       </div>
     </div>
   );
 
   return (
     <div className="h-screen w-screen bg-gray-900 flex flex-col relative">
-      {/* Full Screen Area */}
+      {/* Full Screen */}
       <div className="flex-1 flex items-center justify-center rounded-lg m-2 relative">
         {screenTrack ? (
           <VideoPlayer track={screenTrack} />
@@ -247,14 +255,9 @@ const VideoCall = () => {
 
       {/* Floating Tiles */}
       <div className="absolute bottom-28 right-6 flex flex-col gap-2">
-        {/* Local */}
         {localTracks.video && mainTrack !== localTracks.video && (
           <div className="relative w-52 h-32 bg-black rounded-lg overflow-hidden border border-white shadow flex items-center justify-center">
-            {camOn ? (
-              <VideoPlayer track={localTracks.video} />
-            ) : (
-              <AvatarTile micOn={micOn} camOn={camOn} />
-            )}
+            {camOn ? <VideoPlayer track={localTracks.video} /> : <AvatarTile micOn={micOn} camOn={camOn} />}
             <button
               onClick={() => makeFullScreen(localTracks.video)}
               className="absolute top-1 right-1 bg-gray-700 text-white p-1 rounded"
@@ -264,7 +267,6 @@ const VideoCall = () => {
           </div>
         )}
 
-        {/* Remote */}
         {Object.values(remoteUsers).map((user) =>
           user.videoTrack && mainTrack !== user.videoTrack ? (
             <div
@@ -286,11 +288,7 @@ const VideoCall = () => {
       {/* Controls */}
       <div className="bg-gray-800 py-3 flex justify-center gap-6">
         {!joined ? (
-          // Show only Join button
-          <button
-            onClick={joinCall}
-            className="px-4 py-2 bg-green-600 rounded-lg text-white"
-          >
+          <button onClick={handleJoinClick} className="px-4 py-2 bg-green-600 rounded-lg text-white">
             Join
           </button>
         ) : (
@@ -304,14 +302,14 @@ const VideoCall = () => {
 
             <button
               onClick={toggleMic}
-              className={`px-4 py-2 rounded-full text-white ${!micOn ? 'bg-blue-500' :'bg-gray-700'}`}
+              className={`px-4 py-2 rounded-full text-white ${!micOn ? "bg-blue-500" : "bg-gray-700"}`}
             >
               {micOn ? <FaMicrophone /> : <FaMicrophoneSlash />}
             </button>
 
             <button
               onClick={toggleCamera}
-              className={`px-4 py-2 rounded-full text-white ${!camOn ? 'bg-blue-500' :'bg-gray-700'}`}
+              className={`px-4 py-2 rounded-full text-white ${!camOn ? "bg-blue-500" : "bg-gray-700"}`}
             >
               {camOn ? <FaVideo /> : <FaVideoSlash />}
             </button>
@@ -326,7 +324,6 @@ const VideoCall = () => {
           </>
         )}
       </div>
-
     </div>
   );
 };
